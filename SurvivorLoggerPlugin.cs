@@ -15,14 +15,16 @@ internal static class BuildInfo
 
 public sealed class SurvivorLoggerPlugin : MelonPlugin
 {
+    private SurvivorLog? _pluginLog;
+
     public override void OnInitializeMelon()
     {
-        SurvivorLog.Initialize(LoggerInstance);
-        SurvivorLog.Msg($"{BuildInfo.Name} {BuildInfo.Version} initialized");
+        _pluginLog = new SurvivorLog(BuildInfo.Name, LoggerInstance);
+        _pluginLog.Msg($"{BuildInfo.Name} {BuildInfo.Version} initialized");
     }
 
     public override void OnUpdate()
     {
-        SurvivorLog.AdvanceFrame();
+        SurvivorFrameClock.AdvanceFrame();
     }
 }

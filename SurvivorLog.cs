@@ -20,50 +20,96 @@ public enum SurvivorLogLevel
     Exception = 128
 }
 
-public static class SurvivorLog
+internal static class SurvivorFrameClock
 {
-    private const string CategoryIdentifier = "SurvivorLogger";
-    private const string CategoryDisplayName = "Survivor Logger";
-    private const double DefaultTimeIntervalSeconds = 5d;
-    private const int DefaultFrameInterval = 300;
-    private static MelonLogger.Instance? _logger;
-    private static bool _preferencesInitialized;
     private static long _frameCounter;
-    private static MelonPreferences_Entry<bool>? _loggingEnabledEntry;
-    private static MelonPreferences_Entry<bool>? _traceEnabledEntry;
-    private static MelonPreferences_Entry<bool>? _debugEnabledEntry;
-    private static MelonPreferences_Entry<bool>? _verboseEnabledEntry;
-    private static MelonPreferences_Entry<bool>? _infoEnabledEntry;
-    private static MelonPreferences_Entry<bool>? _warningEnabledEntry;
-    private static readonly object SyncRoot = new();
-    private static readonly Dictionary<string, ModTimingSettings> ModTimingSettingsByMod = new(StringComparer.Ordinal);
-    private static readonly Dictionary<string, Dictionary<string, ThrottleState>> ThrottleStatesByMod = new(StringComparer.Ordinal);
 
-    public static bool IsInitialized => _logger != null;
-
-    internal static void Initialize(MelonLogger.Instance logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        InitializePreferences();
-    }
+    internal static long CurrentFrame => Interlocked.Read(ref _frameCounter);
 
     internal static void AdvanceFrame()
     {
-        lock (SyncRoot)
-            _frameCounter++;
+        Interlocked.Increment(ref _frameCounter);
+    }
+}
+
+public sealed class SurvivorLog
+{
+    private const double DefaultTimeIntervalSeconds = 5d;
+    private const int DefaultFrameInterval = 300;
+
+    private readonly MelonLogger.Instance? _logger;
+    private readonly object _syncRoot = new();
+    private readonly Dictionary<string, ThrottleState> _throttleStates = new(StringComparer.Ordinal);
+    private readonly MelonPreferences_Entry<bool> _loggingEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _traceEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _debugEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _verboseEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _infoEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _warningEnabledEntry;
+
+    private SurvivorLogTimingMode _timingMode = SurvivorLogTimingMode.Time;
+    private double _timeIntervalSeconds = DefaultTimeIntervalSeconds;
+    private int _frameInterval = DefaultFrameInterval;
+
+    public SurvivorLog(string modId, MelonLogger.Instance? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(modId))
+            throw new ArgumentException($"{nameof(modId)} cannot be null or empty", nameof(modId));
+
+        ModId = modId;
+        _logger = logger;
+
+        var categoryIdentifier = $"SurvivorLogger.{modId}";
+        var categoryDisplayName = $"Survivor Logger ({modId})";
+        var category = MelonPreferences.CreateCategory(categoryIdentifier, categoryDisplayName);
+        _loggingEnabledEntry = category.CreateEntry("Enable Logging", true);
+        _traceEnabledEntry = category.CreateEntry("Enable Trace", false);
+        _debugEnabledEntry = category.CreateEntry("Enable Debug", false);
+        _verboseEnabledEntry = category.CreateEntry("Enable Verbose", false);
+        _infoEnabledEntry = category.CreateEntry("Enable Info", true);
+        _warningEnabledEntry = category.CreateEntry("Enable Warning", true);
     }
 
-    public static void Msg(string message)
+    public string ModId { get; }
+
+    public SurvivorLogTimingMode TimingMode
+    {
+        get
+        {
+            lock (_syncRoot)
+                return _timingMode;
+        }
+    }
+
+    public double TimeIntervalSeconds
+    {
+        get
+        {
+            lock (_syncRoot)
+                return _timeIntervalSeconds;
+        }
+    }
+
+    public int FrameInterval
+    {
+        get
+        {
+            lock (_syncRoot)
+                return _frameInterval;
+        }
+    }
+
+    public void Msg(string message)
     {
         Log(SurvivorLogLevel.Info, message);
     }
 
-    public static void Msg(string scope, string message)
+    public void Msg(string scope, string message)
     {
         Log(SurvivorLogLevel.Info, message, scope);
     }
 
-    public static void Msg(object message)
+    public void Msg(object message)
     {
         if (message == null)
             return;
@@ -71,57 +117,57 @@ public static class SurvivorLog
         Msg(message.ToString()!);
     }
 
-    public static void Trace(string message)
+    public void Trace(string message)
     {
         Log(SurvivorLogLevel.Trace, message);
     }
 
-    public static void Trace(string scope, string message)
+    public void Trace(string scope, string message)
     {
         Log(SurvivorLogLevel.Trace, message, scope);
     }
 
-    public static void Debug(string message)
+    public void Debug(string message)
     {
         Log(SurvivorLogLevel.Debug, message);
     }
 
-    public static void Debug(string scope, string message)
+    public void Debug(string scope, string message)
     {
         Log(SurvivorLogLevel.Debug, message, scope);
     }
 
-    public static void Verbose(string message)
+    public void Verbose(string message)
     {
         Log(SurvivorLogLevel.Verbose, message);
     }
 
-    public static void Verbose(string scope, string message)
+    public void Verbose(string scope, string message)
     {
         Log(SurvivorLogLevel.Verbose, message, scope);
     }
 
-    public static void Info(string message)
+    public void Info(string message)
     {
         Log(SurvivorLogLevel.Info, message);
     }
 
-    public static void Info(string scope, string message)
+    public void Info(string scope, string message)
     {
         Log(SurvivorLogLevel.Info, message, scope);
     }
 
-    public static void Warning(string message)
+    public void Warning(string message)
     {
         Log(SurvivorLogLevel.Warning, message);
     }
 
-    public static void Warning(string scope, string message)
+    public void Warning(string scope, string message)
     {
         Log(SurvivorLogLevel.Warning, message, scope);
     }
 
-    public static void Warning(object message)
+    public void Warning(object message)
     {
         if (message == null)
             return;
@@ -129,17 +175,17 @@ public static class SurvivorLog
         Warning(message.ToString()!);
     }
 
-    public static void Error(string message)
+    public void Error(string message)
     {
         Log(SurvivorLogLevel.Error, message);
     }
 
-    public static void Error(string scope, string message)
+    public void Error(string scope, string message)
     {
         Log(SurvivorLogLevel.Error, message, scope);
     }
 
-    public static void Error(object message)
+    public void Error(object message)
     {
         if (message == null)
             return;
@@ -147,7 +193,7 @@ public static class SurvivorLog
         Error(message.ToString()!);
     }
 
-    public static void Exception(Exception exception, string? scope = null)
+    public void Exception(Exception exception, string? scope = null)
     {
         if (exception == null)
             return;
@@ -155,90 +201,78 @@ public static class SurvivorLog
         Log(SurvivorLogLevel.Exception, exception.ToString(), scope);
     }
 
-    public static void Critical(string message)
+    public void Critical(string message)
     {
         Log(SurvivorLogLevel.Critical, message);
     }
 
-    public static void Critical(string scope, string message)
+    public void Critical(string scope, string message)
     {
         Log(SurvivorLogLevel.Critical, message, scope);
     }
 
-    public static void ConfigureModTiming(string modId, SurvivorLogTimingMode mode = SurvivorLogTimingMode.Time, double? timeIntervalSeconds = null, int? frameInterval = null)
+    public void ConfigureTiming(SurvivorLogTimingMode mode = SurvivorLogTimingMode.Time, double? timeIntervalSeconds = null, int? frameInterval = null)
     {
-        if (string.IsNullOrWhiteSpace(modId))
-            throw new ArgumentException($"{nameof(modId)} cannot be null or empty", nameof(modId));
-
-        lock (SyncRoot)
+        lock (_syncRoot)
         {
-            var settings = GetOrCreateModTimingSettings(modId);
-            settings.Mode = mode;
+            _timingMode = mode;
 
             if (timeIntervalSeconds.HasValue)
-                settings.TimeIntervalSeconds = Math.Max(0.01d, timeIntervalSeconds.Value);
+                _timeIntervalSeconds = Math.Max(0.01d, timeIntervalSeconds.Value);
 
             if (frameInterval.HasValue)
-                settings.FrameInterval = Math.Max(1, frameInterval.Value);
+                _frameInterval = Math.Max(1, frameInterval.Value);
         }
     }
 
-    public static void SetModTimingMode(string modId, SurvivorLogTimingMode mode)
+    public void SetTimingMode(SurvivorLogTimingMode mode)
     {
-        ConfigureModTiming(modId, mode);
+        ConfigureTiming(mode);
     }
 
-    public static void SetModTimeInterval(string modId, double timeIntervalSeconds)
+    public void SetTimeInterval(double timeIntervalSeconds)
     {
-        ConfigureModTiming(modId, timeIntervalSeconds: timeIntervalSeconds);
+        ConfigureTiming(timeIntervalSeconds: timeIntervalSeconds);
     }
 
-    public static void SetModFrameInterval(string modId, int frameInterval)
+    public void SetFrameInterval(int frameInterval)
     {
-        ConfigureModTiming(modId, frameInterval: frameInterval);
+        ConfigureTiming(frameInterval: frameInterval);
     }
 
-    public static void ResetModTimingState(string modId)
+    public void ResetTimingState()
     {
-        if (string.IsNullOrWhiteSpace(modId))
-            return;
-
-        lock (SyncRoot)
-        {
-            if (!ThrottleStatesByMod.TryGetValue(modId, out var states))
-                return;
-
-            states.Clear();
-        }
+        lock (_syncRoot)
+            _throttleStates.Clear();
     }
 
-    public static void LogThrottled(string modId, SurvivorLogLevel level, string message, string? scope = null, string? messageKey = null)
+    public void LogThrottled(SurvivorLogLevel level, string message, string? scope = null, string? messageKey = null)
     {
         if (string.IsNullOrWhiteSpace(message))
             return;
 
-        if (!ShouldLogThrottled(modId, level, scope, message, messageKey))
+        if (!ShouldLogThrottled(level, scope, message, messageKey))
             return;
 
         Log(level, message, scope);
     }
 
-    public static void MsgThrottled(string modId, string message, string? scope = null, string? messageKey = null)
+    public void MsgThrottled(string message, string? scope = null, string? messageKey = null)
     {
-        LogThrottled(modId, SurvivorLogLevel.Info, message, scope, messageKey);
+        LogThrottled(SurvivorLogLevel.Info, message, scope, messageKey);
     }
 
-    public static void WarningThrottled(string modId, string message, string? scope = null, string? messageKey = null)
+    public void WarningThrottled(string message, string? scope = null, string? messageKey = null)
     {
-        LogThrottled(modId, SurvivorLogLevel.Warning, message, scope, messageKey);
+        LogThrottled(SurvivorLogLevel.Warning, message, scope, messageKey);
     }
 
-    public static void ErrorThrottled(string modId, string message, string? scope = null, string? messageKey = null)
+    public void ErrorThrottled(string message, string? scope = null, string? messageKey = null)
     {
-        LogThrottled(modId, SurvivorLogLevel.Error, message, scope, messageKey);
+        LogThrottled(SurvivorLogLevel.Error, message, scope, messageKey);
     }
 
-    public static void Log(SurvivorLogLevel level, string message, string? scope = null)
+    public void Log(SurvivorLogLevel level, string message, string? scope = null)
     {
         if (string.IsNullOrWhiteSpace(message))
             return;
@@ -251,15 +285,12 @@ public static class SurvivorLog
         Write(level, output);
     }
 
-    public static bool IsLevelEnabled(SurvivorLogLevel level)
+    public bool IsLevelEnabled(SurvivorLogLevel level)
     {
         if (IsAlwaysEnabled(level))
             return true;
 
-        if (!_preferencesInitialized)
-            return true;
-
-        if (_loggingEnabledEntry != null && !_loggingEnabledEntry.Value)
+        if (!_loggingEnabledEntry.Value)
             return false;
 
         var entry = GetEntryForLevel(level);
@@ -269,11 +300,8 @@ public static class SurvivorLog
         return entry.Value;
     }
 
-    public static void SetLevelEnabled(SurvivorLogLevel level, bool enabled)
+    public void SetLevelEnabled(SurvivorLogLevel level, bool enabled)
     {
-        if (!_preferencesInitialized)
-            return;
-
         var entry = GetEntryForLevel(level);
         if (entry == null)
             return;
@@ -282,22 +310,7 @@ public static class SurvivorLog
         MelonPreferences.Save();
     }
 
-    private static void InitializePreferences()
-    {
-        if (_preferencesInitialized)
-            return;
-
-        var category = MelonPreferences.CreateCategory(CategoryIdentifier, CategoryDisplayName);
-        _loggingEnabledEntry = category.CreateEntry("Enable Logging", true);
-        _traceEnabledEntry = category.CreateEntry("Enable Trace", false);
-        _debugEnabledEntry = category.CreateEntry("Enable Debug", false);
-        _verboseEnabledEntry = category.CreateEntry("Enable Verbose", false);
-        _infoEnabledEntry = category.CreateEntry("Enable Info", true);
-        _warningEnabledEntry = category.CreateEntry("Enable Warning", true);
-        _preferencesInitialized = true;
-    }
-
-    private static MelonPreferences_Entry<bool>? GetEntryForLevel(SurvivorLogLevel level)
+    private MelonPreferences_Entry<bool>? GetEntryForLevel(SurvivorLogLevel level)
     {
         return level switch
         {
@@ -341,7 +354,7 @@ public static class SurvivorLog
         return $"{prefix} {message}";
     }
 
-    private static void Write(SurvivorLogLevel level, string output)
+    private void Write(SurvivorLogLevel level, string output)
     {
         if (_logger == null)
         {
@@ -381,49 +394,45 @@ public static class SurvivorLog
         MelonLogger.Msg(output);
     }
 
-    private static bool ShouldLogThrottled(string modId, SurvivorLogLevel level, string? scope, string message, string? messageKey)
+    private bool ShouldLogThrottled(SurvivorLogLevel level, string? scope, string message, string? messageKey)
     {
-        if (string.IsNullOrWhiteSpace(modId))
-            return true;
-
         var key = BuildThrottleKey(level, scope, message, messageKey);
         var utcNow = DateTime.UtcNow;
+        var frameNow = SurvivorFrameClock.CurrentFrame;
 
-        lock (SyncRoot)
+        lock (_syncRoot)
         {
-            var settings = GetOrCreateModTimingSettings(modId);
-            var modStates = GetOrCreateModThrottleStates(modId);
-            if (!modStates.TryGetValue(key, out var state))
+            if (!_throttleStates.TryGetValue(key, out var state))
             {
                 state = new ThrottleState();
-                modStates[key] = state;
+                _throttleStates[key] = state;
             }
 
             if (!state.HasLogged)
             {
                 state.HasLogged = true;
                 state.LastLoggedUtc = utcNow;
-                state.LastLoggedFrame = _frameCounter;
+                state.LastLoggedFrame = frameNow;
                 return true;
             }
 
-            if (settings.Mode == SurvivorLogTimingMode.Frame)
+            if (_timingMode == SurvivorLogTimingMode.Frame)
             {
-                var frameDelta = _frameCounter - state.LastLoggedFrame;
-                if (frameDelta < settings.FrameInterval)
+                var frameDelta = frameNow - state.LastLoggedFrame;
+                if (frameDelta < _frameInterval)
                     return false;
 
-                state.LastLoggedFrame = _frameCounter;
+                state.LastLoggedFrame = frameNow;
                 state.LastLoggedUtc = utcNow;
                 return true;
             }
 
             var elapsed = utcNow - state.LastLoggedUtc;
-            if (elapsed.TotalSeconds < settings.TimeIntervalSeconds)
+            if (elapsed.TotalSeconds < _timeIntervalSeconds)
                 return false;
 
             state.LastLoggedUtc = utcNow;
-            state.LastLoggedFrame = _frameCounter;
+            state.LastLoggedFrame = frameNow;
             return true;
         }
     }
@@ -435,33 +444,6 @@ public static class SurvivorLog
             key = message;
 
         return $"{level}|{scope ?? string.Empty}|{key}";
-    }
-
-    private static ModTimingSettings GetOrCreateModTimingSettings(string modId)
-    {
-        if (ModTimingSettingsByMod.TryGetValue(modId, out var settings))
-            return settings;
-
-        settings = new ModTimingSettings();
-        ModTimingSettingsByMod[modId] = settings;
-        return settings;
-    }
-
-    private static Dictionary<string, ThrottleState> GetOrCreateModThrottleStates(string modId)
-    {
-        if (ThrottleStatesByMod.TryGetValue(modId, out var states))
-            return states;
-
-        states = new Dictionary<string, ThrottleState>(StringComparer.Ordinal);
-        ThrottleStatesByMod[modId] = states;
-        return states;
-    }
-
-    private sealed class ModTimingSettings
-    {
-        internal SurvivorLogTimingMode Mode { get; set; } = SurvivorLogTimingMode.Time;
-        internal double TimeIntervalSeconds { get; set; } = DefaultTimeIntervalSeconds;
-        internal int FrameInterval { get; set; } = DefaultFrameInterval;
     }
 
     private sealed class ThrottleState
