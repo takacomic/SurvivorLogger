@@ -12,6 +12,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../SurvivorModMenu/SurvivorModMenu.csproj" />
+        <Reference Include="FixNullableAttribute">
+            <HintPath>/mnt/data/SteamLibrary/steamapps/common/VSModded/UserLibs/FixNullableAttribute.dll</HintPath>
+        </Reference>
         <Reference Include="MelonLoader">
             <HintPath>$(Net6)/MelonLoader.dll</HintPath>
         </Reference>

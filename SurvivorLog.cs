@@ -1,4 +1,5 @@
 using MelonLoader;
+using SurvivorModMenu;
 
 namespace SurvivorLogger;
 
@@ -32,7 +33,7 @@ internal static class SurvivorFrameClock
     }
 }
 
-public sealed class SurvivorLog
+public sealed class SurvivorLog<T> where T : MelonBase
 {
     private const double DefaultTimeIntervalSeconds = 5d;
     private const int DefaultFrameInterval = 300;
@@ -46,18 +47,21 @@ public sealed class SurvivorLog
     private readonly MelonPreferences_Entry<bool> _verboseEnabledEntry;
     private readonly MelonPreferences_Entry<bool> _infoEnabledEntry;
     private readonly MelonPreferences_Entry<bool> _warningEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _errorEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _criticalEnabledEntry;
+    private readonly MelonPreferences_Entry<bool> _exceptionEnabledEntry;
 
     private SurvivorLogTimingMode _timingMode = SurvivorLogTimingMode.Time;
     private double _timeIntervalSeconds = DefaultTimeIntervalSeconds;
     private int _frameInterval = DefaultFrameInterval;
 
-    public SurvivorLog(string modId, MelonLogger.Instance? logger = null)
+    public SurvivorLog(string modId, bool registerInModMenu = true)
     {
         if (string.IsNullOrWhiteSpace(modId))
             throw new ArgumentException($"{nameof(modId)} cannot be null or empty", nameof(modId));
 
         ModId = modId;
-        _logger = logger;
+        _logger = Melon<T>.Logger;
 
         var categoryIdentifier = $"SurvivorLogger.{modId}";
         var categoryDisplayName = $"Survivor Logger ({modId})";
@@ -68,6 +72,12 @@ public sealed class SurvivorLog
         _verboseEnabledEntry = category.CreateEntry("Enable Verbose", false);
         _infoEnabledEntry = category.CreateEntry("Enable Info", true);
         _warningEnabledEntry = category.CreateEntry("Enable Warning", true);
+        _errorEnabledEntry = category.CreateEntry("Enable Error", true);
+        _criticalEnabledEntry = category.CreateEntry("Enable Critical", true);
+        _exceptionEnabledEntry = category.CreateEntry("Enable Exception", true);
+
+        if (registerInModMenu)
+            ModMenuRegistry.RegisterSupplement(ModId, "SurvivorLogger", BuildLogOptions);
     }
 
     public string ModId { get; }
@@ -287,9 +297,6 @@ public sealed class SurvivorLog
 
     public bool IsLevelEnabled(SurvivorLogLevel level)
     {
-        if (IsAlwaysEnabled(level))
-            return true;
-
         if (!_loggingEnabledEntry.Value)
             return false;
 
@@ -319,13 +326,11 @@ public sealed class SurvivorLog
             SurvivorLogLevel.Verbose => _verboseEnabledEntry,
             SurvivorLogLevel.Info => _infoEnabledEntry,
             SurvivorLogLevel.Warning => _warningEnabledEntry,
+            SurvivorLogLevel.Error => _errorEnabledEntry,
+            SurvivorLogLevel.Critical => _criticalEnabledEntry,
+            SurvivorLogLevel.Exception => _exceptionEnabledEntry,
             _ => null
         };
-    }
-
-    private static bool IsAlwaysEnabled(SurvivorLogLevel level)
-    {
-        return level is SurvivorLogLevel.Error or SurvivorLogLevel.Critical or SurvivorLogLevel.Exception;
     }
 
     private static string BuildScopedMessage(string? scope, string message)
@@ -444,6 +449,27 @@ public sealed class SurvivorLog
             key = message;
 
         return $"{level}|{scope ?? string.Empty}|{key}";
+    }
+
+    private void BuildLogOptions(IModMenuSectionBuilder builder)
+    {
+        if (builder == null)
+            return;
+
+        builder.AddLabel("Logger");
+        builder.AddToggle("Enable Logging", () => _loggingEnabledEntry.Value, value =>
+        {
+            _loggingEnabledEntry.Value = value;
+            MelonPreferences.Save();
+        });
+        builder.AddToggle("Trace", () => _traceEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Trace, value));
+        builder.AddToggle("Debug", () => _debugEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Debug, value));
+        builder.AddToggle("Verbose", () => _verboseEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Verbose, value));
+        builder.AddToggle("Info", () => _infoEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Info, value));
+        builder.AddToggle("Warning", () => _warningEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Warning, value));
+        builder.AddToggle("Error", () => _errorEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Error, value));
+        builder.AddToggle("Critical", () => _criticalEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Critical, value));
+        builder.AddToggle("Exception", () => _exceptionEnabledEntry.Value, value => SetLevelEnabled(SurvivorLogLevel.Exception, value));
     }
 
     private sealed class ThrottleState

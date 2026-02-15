@@ -2,6 +2,7 @@ using MelonLoader;
 
 [assembly: MelonInfo(typeof(SurvivorLogger.SurvivorLoggerPlugin), SurvivorLogger.BuildInfo.Name, SurvivorLogger.BuildInfo.Version, SurvivorLogger.BuildInfo.Author, SurvivorLogger.BuildInfo.Download)]
 [assembly: MelonGame("poncle", "Vampire Survivors")]
+[assembly: MelonOptionalDependencies("SurvivorModMenu")]
 
 namespace SurvivorLogger;
 
@@ -15,12 +16,9 @@ internal static class BuildInfo
 
 public sealed class SurvivorLoggerPlugin : MelonPlugin
 {
-    private SurvivorLog? _pluginLog;
-
     public override void OnInitializeMelon()
     {
-        _pluginLog = new SurvivorLog(BuildInfo.Name, LoggerInstance);
-        _pluginLog.Msg($"{BuildInfo.Name} {BuildInfo.Version} initialized");
+        LoggerInstance.Msg($"{BuildInfo.Name} {BuildInfo.Version} initialized");
     }
 
     public override void OnUpdate()

@@ -7,6 +7,7 @@ It adds:
 - scoped messages (`[Scope] message`)
 - per-mod throttled logging with immediate first message
 - per-mod timing mode (time-based or frame-based)
+- automatic log-toggle registration into `SurvivorModMenu` under the implementing mod entry
 
 ## License
 
@@ -15,8 +16,9 @@ This project is licensed under the GNU Lesser General Public License v3.0. See `
 ## Install
 
 1. Build `SurvivorLogger`.
-2. Copy `SurvivorLogger.dll` to `MelonLoader/Plugins`.
+2. Copy `SurvivorLogger.dll` to `<GameRoot>/Plugins`.
 3. Ensure your mod can reference `SurvivorLogger.dll` at compile time.
+4. For in-game log toggles, also install `SurvivorModMenu.dll`.
 
 ## Add To Your Mod Project
 
@@ -25,7 +27,7 @@ Add a reference to `SurvivorLogger.dll` in your mod `.csproj`.
 ```xml
 <ItemGroup>
   <Reference Include="SurvivorLogger">
-    <HintPath>$(VSDir)/MelonLoader/Plugins/SurvivorLogger.dll</HintPath>
+    <HintPath>$(VSDir)/Plugins/SurvivorLogger.dll</HintPath>
   </Reference>
 </ItemGroup>
 ```
@@ -34,6 +36,7 @@ Optional: declare an optional dependency in your mod assembly so load order is e
 
 ```csharp
 [assembly: MelonOptionalDependencies("SurvivorLogger")]
+[assembly: MelonOptionalDependencies("SurvivorModMenu")]
 ```
 
 ## Basic Usage In A Mod
@@ -44,11 +47,11 @@ using SurvivorLogger;
 
 public class MyMod : MelonMod
 {
-    private SurvivorLog _log = null!;
+    private SurvivorLog<MyMod> _log = null!;
 
     public override void OnInitializeMelon()
     {
-        _log = new SurvivorLog("MyMod", LoggerInstance);
+        _log = new SurvivorLog<MyMod>("MyMod");
         _log.Info("Init", "Initialized");
     }
 
@@ -58,6 +61,8 @@ public class MyMod : MelonMod
     }
 }
 ```
+
+`SurvivorLog` registers its toggle section under the same mod id (`"MyMod"` above), so the log settings appear in that mod's menu entry, not under `SurvivorLogger`.
 
 ## Configure Timing
 
@@ -121,12 +126,13 @@ Preferences include:
 - `Enable Verbose`
 - `Enable Info`
 - `Enable Warning`
-
-`Error`, `Critical`, and `Exception` are always enabled.
+- `Enable Error`
+- `Enable Critical`
+- `Enable Exception`
 
 ## Public API Summary
 
-- `new SurvivorLog(string modId, MelonLogger.Instance? logger = null)`
+- `new SurvivorLog<T>(string modId, bool registerInModMenu = true) where T : MelonBase`
 - `logger.Log(SurvivorLogLevel level, string message, string? scope = null)`
 - `logger.Trace/Debug/Verbose/Info/Warning/Error/Critical(...)`
 - `logger.Exception(Exception exception, string? scope = null)`
