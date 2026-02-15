@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>SurvivorLogger</AssemblyName>
+        <RootNamespace>SurvivorLogger</RootNamespace>
+        <VSDir>/mnt/data/SteamLibrary/steamapps/common/VSModded</VSDir>
+        <Net6>$(VSDir)/MelonLoader/net6</Net6>
+        <DisablePluginDeploy>false</DisablePluginDeploy>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Reference Include="MelonLoader">
+            <HintPath>$(Net6)/MelonLoader.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+
+    <Target Name="PostBuild" AfterTargets="Build" Condition="'$(DisablePluginDeploy)' != 'true'">
+        <Copy
+            SourceFiles="$(TargetPath)"
+            DestinationFolder="$(VSDir)/Plugins"
+        />
+    </Target>
+
+</Project>
