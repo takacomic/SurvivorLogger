@@ -1,5 +1,6 @@
 using MelonLoader;
 using SurvivorModMenu;
+using SurvivorModMenu.ModMenu;
 
 namespace SurvivorLogger;
 
